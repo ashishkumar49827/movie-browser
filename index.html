@@ -153,17 +153,21 @@ function goRotate(){
   else doLock();
 }
 /* YouTube iframe control via postMessage (no external script) */
-let YT_STATE=-1;
+let YT_STATE=-1, YT_T=-1, YT_TS=0;
 function ytCmd(f,fn){ try{ f.contentWindow.postMessage(JSON.stringify({event:'command',func:fn,args:[]}),'*'); }catch(e){ toast('Player command fail: '+errMsg(e)); } }
 window.addEventListener('message',e=>{
   if(typeof e.data!=='string'||String(e.origin).indexOf('youtube')<0) return;
   let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
-  let st=null;
+  const g=document.querySelector('.gest'); let st=null;
   if(d.event==='onStateChange') st=d.info;
-  else if(d.event==='infoDelivery'&&d.info&&typeof d.info.playerState==='number') st=d.info.playerState;
+  else if(d.event==='infoDelivery'&&d.info){
+    if(typeof d.info.playerState==='number') st=d.info.playerState;
+    if(typeof d.info.currentTime==='number'){
+      if(d.info.currentTime!==YT_T){ YT_T=d.info.currentTime; YT_TS=Date.now(); if(st===null&&YT_T>0) st=1; }
+    }
+  }
   if(st===null) return;
   YT_STATE=st;
-  const g=document.querySelector('.gest');
   if(g) g.classList.toggle('on', st===1||st===2||st===3); /* only after video has started */
 });
 function attachPinch(p){
@@ -191,7 +195,7 @@ function attachPinch(p){
   g.addEventListener('touchend',e=>{
     if(e.touches.length<2) d0=0;
     if(e.touches.length===0){
-      if(!multi&&!moved&&Date.now()-st<500){ ytCmd(f, YT_STATE===1?'pauseVideo':'playVideo'); }
+      if(!multi&&!moved&&Date.now()-st<500){ const pl=(Date.now()-YT_TS<1200); ytCmd(f, pl?'pauseVideo':'playVideo'); if(!pl){YT_TS=Date.now();} else {YT_TS=0;}; }
       multi=false;
     }
   },{passive:true});
@@ -228,7 +232,7 @@ function open_(id){
   <p class="note">Agar video na chale to channel ne embedding band rakhi hai - upar YouTube link se dekho.</p>
   </div></div>
   ${m.desc?`<p class="intro">${esc(m.desc)}</p>`:''}`;
-  YT_STATE=-1; window.scrollTo(0,0);
+  YT_STATE=-1; YT_T=-1; YT_TS=0; window.scrollTo(0,0);
   attachPinch(document.querySelector('.player'));
   updBtns();
 }
