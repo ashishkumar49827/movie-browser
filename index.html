@@ -32,8 +32,14 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:8px 0 4px}
 .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .player:fullscreen,.player:-webkit-full-screen{border-radius:0;aspect-ratio:auto;margin:0}
 .player{touch-action:pan-y}
-.player:fullscreen.fill,.player:-webkit-full-screen.fill{background:#000}
-.player:fullscreen.fill iframe,.player:-webkit-full-screen.fill iframe{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%)}
+.player.fill{position:fixed;inset:0;z-index:9999;width:100vw;height:100vh;height:100dvh;aspect-ratio:auto;border-radius:0;margin:0;background:#000}
+.player.fill iframe{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%)}
+.gest{position:absolute;left:0;right:0;top:16%;bottom:26%;z-index:5;touch-action:none;background:transparent;display:none;-webkit-tap-highlight-color:transparent}
+.gest.on{display:block}
+.player.fill .gest{top:0;bottom:0}
+.fitx{display:none;position:absolute;top:10px;right:10px;z-index:7;background:rgba(0,0,0,.65);color:#fff;border:1px solid #888;border-radius:18px;padding:8px 14px;font-size:14px}
+.player.fill .fitx{display:block}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;background:#222;color:#fff;border:1px solid #e50914;border-radius:10px;padding:10px 14px;font-size:14px;z-index:10000;display:none}
 .fsrow{display:flex;gap:8px;margin:-6px 0 14px}
 .fsrow .fsbtn{flex:1;margin:0}
 .fsbtn{display:block;background:#000;color:#fff;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:15px;font-weight:600;cursor:pointer}
@@ -77,13 +83,29 @@ function home(){
   inp.addEventListener('input', e=>{ q = e.target.value; home(); const i=document.getElementById('q'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); });
 }
 let CUR=null;
+function toast(m){
+  let t=document.getElementById('toast');
+  if(!t){ t=document.createElement('div'); t.id='toast'; document.body.appendChild(t); }
+  t.textContent=m; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>{t.style.display='none';},5000);
+}
+function errMsg(e){ return (e&&(e.name||e.message))?((e.name||'')+(e.message?': '+e.message:'')):String(e||'unknown'); }
+function reqFS(p,label){
+  const req=p.requestFullscreen||p.webkitRequestFullscreen;
+  if(!req){ toast((label||'Fullscreen')+': is browser me fullscreen support nahi'); return null; }
+  try{
+    const r=req.call(p);
+    if(r&&r.catch) return r.catch(e=>{ toast((label||'Fullscreen')+' fail: '+errMsg(e)); throw e; });
+    return r;
+  }catch(e){ toast((label||'Fullscreen')+' fail: '+errMsg(e)); return null; }
+}
 function goFS(){
   const p=document.querySelector('.player'); if(!p) return;
   const d=document;
   if(d.fullscreenElement||d.webkitFullscreenElement){ (d.exitFullscreen||d.webkitExitFullscreen).call(d); return; }
-  const req=p.requestFullscreen||p.webkitRequestFullscreen;
-  if(req){ try{const r=req.call(p); if(r&&r.catch)r.catch(()=>{});}catch(e){} }
-  else if(CUR&&CUR.yt){ window.open(CUR.yt,'_blank'); }
+  const r=reqFS(p,'Full screen');
+  if(r&&r.catch) r.catch(()=>{});
+  if(!r && CUR&&CUR.yt){ window.open(CUR.yt,'_blank'); }
 }
 function updBtns(){
   const p=document.querySelector('.player'); const b=document.getElementById('fillbtn');
@@ -98,13 +120,9 @@ function fitFill(){
 }
 function clearFill(){
   const p=document.querySelector('.player'); if(!p) return;
-  p.classList.remove('fill');
+  p.classList.remove('fill'); document.body.style.overflow='';
   const f=p.querySelector('iframe'); if(f){ f.style.width=''; f.style.height=''; }
   updBtns();
-}
-function reqFS(p){
-  const req=p.requestFullscreen||p.webkitRequestFullscreen; if(!req) return null;
-  try{ return req.call(p); }catch(e){ return null; }
 }
 function goFill(force){
   const p=document.querySelector('.player'); if(!p) return;
@@ -112,40 +130,71 @@ function goFill(force){
   const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
   const want=(force!==undefined)?force:!p.classList.contains('fill');
   if(want){
-    p.classList.add('fill');
-    if(!fsEl){ const r=reqFS(p); if(r&&r.then){ r.then(fitFill).catch(()=>{}); } }
+    p.classList.add('fill'); document.body.style.overflow='hidden';
     fitFill();
+    if(!fsEl){ const r=reqFS(p,'Fill screen'); if(r&&r.then){ r.then(()=>{fitFill();}).catch(()=>{}); } }
   } else {
     clearFill();
+    if(fsEl){ try{ (d.exitFullscreen||d.webkitExitFullscreen).call(d); }catch(e){ toast('Exit fail: '+errMsg(e)); } }
   }
   updBtns();
 }
 function goRotate(){
   const p=document.querySelector('.player'); if(!p) return;
-  const d=document; const so=screen.orientation||{};
+  const d=document; const so=screen.orientation;
   const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
   const doLock=()=>{
-    if(!so.lock) return;
+    if(!so||!so.lock){ toast('Landscape: is browser me rotate-lock support nahi'); return; }
     const t=(so.type&&so.type.indexOf('landscape')===0)?'portrait':'landscape';
-    try{ const r=so.lock(t); if(r&&r.catch) r.catch(()=>{}); }catch(e){}
+    try{ const r=so.lock(t); if(r&&r.catch) r.catch(e=>toast('Landscape fail: '+errMsg(e))); }
+    catch(e){ toast('Landscape fail: '+errMsg(e)); }
   };
-  if(!fsEl){ const r=reqFS(p); if(r&&r.then){ r.then(doLock).catch(()=>{}); } }
+  if(!fsEl){ const r=reqFS(p,'Landscape'); if(r&&r.then){ r.then(doLock).catch(()=>{}); } }
   else doLock();
 }
+/* YouTube iframe control via postMessage (no external script) */
+let YT_STATE=-1;
+function ytCmd(f,fn){ try{ f.contentWindow.postMessage(JSON.stringify({event:'command',func:fn,args:[]}),'*'); }catch(e){ toast('Player command fail: '+errMsg(e)); } }
+window.addEventListener('message',e=>{
+  if(typeof e.data!=='string'||String(e.origin).indexOf('youtube')<0) return;
+  let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
+  let st=null;
+  if(d.event==='onStateChange') st=d.info;
+  else if(d.event==='infoDelivery'&&d.info&&typeof d.info.playerState==='number') st=d.info.playerState;
+  if(st===null) return;
+  YT_STATE=st;
+  const g=document.querySelector('.gest');
+  if(g) g.classList.toggle('on', st===1||st===2||st===3); /* only after video has started */
+});
 function attachPinch(p){
   if(!p||p._pinch) return; p._pinch=1;
-  let d0=0;
+  const g=p.querySelector('.gest'), f=p.querySelector('iframe'); if(!g||!f) return;
+  const ping=()=>{ try{ f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*'); }catch(e){} };
+  f.addEventListener('load',()=>{ ping(); setTimeout(ping,800); setTimeout(ping,2500); });
+  const x=p.querySelector('.fitx'); if(x) x.addEventListener('click',()=>goFill(false));
+  let d0=0, multi=false, sx=0, sy=0, st=0, moved=false;
   const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
-  p.addEventListener('touchstart',e=>{ if(e.touches.length===2) d0=dist(e.touches[0],e.touches[1]); },{passive:true});
-  p.addEventListener('touchmove',e=>{
+  g.addEventListener('touchstart',e=>{
+    if(e.touches.length>=2){ d0=dist(e.touches[0],e.touches[1]); multi=true; }
+    else { multi=false; moved=false; sx=e.touches[0].clientX; sy=e.touches[0].clientY; st=Date.now(); }
+  },{passive:true});
+  g.addEventListener('touchmove',e=>{
     if(e.touches.length===2&&d0>0){
       const r=dist(e.touches[0],e.touches[1])/d0;
-      if(r>1.4){ goFill(true); d0=0; }
-      else if(r<0.72){ goFill(false); d0=0; }
-      e.preventDefault();
+      if(r>1.25){ goFill(true); d0=0; }
+      else if(r<0.8){ goFill(false); d0=0; }
+    } else if(e.touches.length===1){
+      if(Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12) moved=true;
     }
+    e.preventDefault();
   },{passive:false});
-  p.addEventListener('touchend',e=>{ if(e.touches.length<2) d0=0; },{passive:true});
+  g.addEventListener('touchend',e=>{
+    if(e.touches.length<2) d0=0;
+    if(e.touches.length===0){
+      if(!multi&&!moved&&Date.now()-st<500){ ytCmd(f, YT_STATE===1?'pauseVideo':'playVideo'); }
+      multi=false;
+    }
+  },{passive:true});
 }
 ['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev,()=>{
   const d=document; const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
@@ -164,7 +213,7 @@ function open_(id){
   app.innerHTML = `<button class="back" onclick="home()">&#8592; Wapas list me</button>
   <h1>${esc(m.title)}</h1>
   <div class="fact">${esc([m.year,m.genre].filter(Boolean).join(' · '))||'Full movie'}</div>
-  <div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${m.id}?rel=0&fs=1&playsinline=1" allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen title="${esc(m.title)}"></iframe></div>
+  <div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${m.id}?rel=0&fs=1&playsinline=1&enablejsapi=1" allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen title="${esc(m.title)}"></iframe><div class="gest"></div><button class="fitx" type="button">&#x2715; Fit karo</button></div>
   <div class="fsrow">
   <button class="fsbtn" onclick="goFS()">&#x26F6; Full screen</button>
   <button class="fsbtn" id="fillbtn" onclick="goFill()">&#x2922; Fill screen</button>
@@ -179,7 +228,7 @@ function open_(id){
   <p class="note">Agar video na chale to channel ne embedding band rakhi hai - upar YouTube link se dekho.</p>
   </div></div>
   ${m.desc?`<p class="intro">${esc(m.desc)}</p>`:''}`;
-  window.scrollTo(0,0);
+  YT_STATE=-1; window.scrollTo(0,0);
   attachPinch(document.querySelector('.player'));
   updBtns();
 }
