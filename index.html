@@ -31,7 +31,12 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:8px 0 4px}
 .player{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-bottom:14px}
 .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .player:fullscreen,.player:-webkit-full-screen{border-radius:0;aspect-ratio:auto;margin:0}
-.fsbtn{display:block;width:100%;background:#000;color:#fff;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin:-6px 0 14px}
+.player{touch-action:pan-y}
+.player:fullscreen.fill,.player:-webkit-full-screen.fill{background:#000}
+.player:fullscreen.fill iframe,.player:-webkit-full-screen.fill iframe{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%)}
+.fsrow{display:flex;gap:8px;margin:-6px 0 14px}
+.fsrow .fsbtn{flex:1;margin:0}
+.fsbtn{display:block;background:#000;color:#fff;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:15px;font-weight:600;cursor:pointer}
 .hero{display:flex;gap:16px;margin-bottom:14px}
 .hero img{width:120px;height:180px;object-fit:cover;border-radius:12px;background:var(--raised)}
 .facts{font-size:14px;line-height:22px;color:var(--ink2)}
@@ -80,13 +85,91 @@ function goFS(){
   if(req){ try{const r=req.call(p); if(r&&r.catch)r.catch(()=>{});}catch(e){} }
   else if(CUR&&CUR.yt){ window.open(CUR.yt,'_blank'); }
 }
+function updBtns(){
+  const p=document.querySelector('.player'); const b=document.getElementById('fillbtn');
+  if(b) b.innerHTML = (p&&p.classList.contains('fill')) ? '&#x2922; Fit karo' : '&#x2922; Fill screen';
+}
+function fitFill(){
+  const p=document.querySelector('.player.fill'); if(!p) return;
+  const f=p.querySelector('iframe'); if(!f) return;
+  const vw=p.clientWidth, vh=p.clientHeight, ar=16/9; let w,h;
+  if(vw/vh > ar){ w=vw; h=Math.round(vw/ar); } else { h=vh; w=Math.round(vh*ar); }
+  f.style.width=w+'px'; f.style.height=h+'px';
+}
+function clearFill(){
+  const p=document.querySelector('.player'); if(!p) return;
+  p.classList.remove('fill');
+  const f=p.querySelector('iframe'); if(f){ f.style.width=''; f.style.height=''; }
+  updBtns();
+}
+function reqFS(p){
+  const req=p.requestFullscreen||p.webkitRequestFullscreen; if(!req) return null;
+  try{ return req.call(p); }catch(e){ return null; }
+}
+function goFill(force){
+  const p=document.querySelector('.player'); if(!p) return;
+  const d=document;
+  const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
+  const want=(force!==undefined)?force:!p.classList.contains('fill');
+  if(want){
+    p.classList.add('fill');
+    if(!fsEl){ const r=reqFS(p); if(r&&r.then){ r.then(fitFill).catch(()=>{}); } }
+    fitFill();
+  } else {
+    clearFill();
+  }
+  updBtns();
+}
+function goRotate(){
+  const p=document.querySelector('.player'); if(!p) return;
+  const d=document; const so=screen.orientation||{};
+  const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
+  const doLock=()=>{
+    if(!so.lock) return;
+    const t=(so.type&&so.type.indexOf('landscape')===0)?'portrait':'landscape';
+    try{ const r=so.lock(t); if(r&&r.catch) r.catch(()=>{}); }catch(e){}
+  };
+  if(!fsEl){ const r=reqFS(p); if(r&&r.then){ r.then(doLock).catch(()=>{}); } }
+  else doLock();
+}
+function attachPinch(p){
+  if(!p||p._pinch) return; p._pinch=1;
+  let d0=0;
+  const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+  p.addEventListener('touchstart',e=>{ if(e.touches.length===2) d0=dist(e.touches[0],e.touches[1]); },{passive:true});
+  p.addEventListener('touchmove',e=>{
+    if(e.touches.length===2&&d0>0){
+      const r=dist(e.touches[0],e.touches[1])/d0;
+      if(r>1.4){ goFill(true); d0=0; }
+      else if(r<0.72){ goFill(false); d0=0; }
+      e.preventDefault();
+    }
+  },{passive:false});
+  p.addEventListener('touchend',e=>{ if(e.touches.length<2) d0=0; },{passive:true});
+}
+['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev,()=>{
+  const d=document; const fsEl=d.fullscreenElement||d.webkitFullscreenElement;
+  if(!fsEl){
+    clearFill();
+    if(screen.orientation&&screen.orientation.unlock){ try{screen.orientation.unlock();}catch(e){} }
+  } else {
+    fitFill();
+  }
+  updBtns();
+}));
+window.addEventListener('resize',()=>fitFill());
+window.addEventListener('orientationchange',()=>setTimeout(fitFill,300));
 function open_(id){
   const m = BY_ID[id]; if(!m) return; CUR=m;
   app.innerHTML = `<button class="back" onclick="home()">&#8592; Wapas list me</button>
   <h1>${esc(m.title)}</h1>
   <div class="fact">${esc([m.year,m.genre].filter(Boolean).join(' · '))||'Full movie'}</div>
   <div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${m.id}?rel=0&fs=1&playsinline=1" allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen title="${esc(m.title)}"></iframe></div>
-  <button class="fsbtn" onclick="goFS()">&#x26F6; Full screen me dekho</button>
+  <div class="fsrow">
+  <button class="fsbtn" onclick="goFS()">&#x26F6; Full screen</button>
+  <button class="fsbtn" id="fillbtn" onclick="goFill()">&#x2922; Fill screen</button>
+  <button class="fsbtn" onclick="goRotate()">&#x1F504; Landscape</button>
+  </div>
   <div class="hero"><img src="posters/${m.id}.jpg" alt="${esc(m.title)} poster"><div class="facts">
   <div><b>Channel:</b> ${esc(m.ch)} (official)</div>
   ${m.runtime?`<div><b>Lambai:</b> ${fmtDur(m.runtime)}</div>`:''}
@@ -97,6 +180,8 @@ function open_(id){
   </div></div>
   ${m.desc?`<p class="intro">${esc(m.desc)}</p>`:''}`;
   window.scrollTo(0,0);
+  attachPinch(document.querySelector('.player'));
+  updBtns();
 }
 home();
 </script>
