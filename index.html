@@ -30,6 +30,8 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:8px 0 4px}
 .back{background:#fff;border:1px solid var(--hair);border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:14px}
 .player{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-bottom:14px}
 .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.player:fullscreen,.player:-webkit-full-screen{border-radius:0;aspect-ratio:auto;margin:0}
+.fsbtn{display:block;width:100%;background:#000;color:#fff;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin:-6px 0 14px}
 .hero{display:flex;gap:16px;margin-bottom:14px}
 .hero img{width:120px;height:180px;object-fit:cover;border-radius:12px;background:var(--raised)}
 .facts{font-size:14px;line-height:22px;color:var(--ink2)}
@@ -69,12 +71,22 @@ function home(){
   const inp = document.getElementById('q');
   inp.addEventListener('input', e=>{ q = e.target.value; home(); const i=document.getElementById('q'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); });
 }
+let CUR=null;
+function goFS(){
+  const p=document.querySelector('.player'); if(!p) return;
+  const d=document;
+  if(d.fullscreenElement||d.webkitFullscreenElement){ (d.exitFullscreen||d.webkitExitFullscreen).call(d); return; }
+  const req=p.requestFullscreen||p.webkitRequestFullscreen;
+  if(req){ try{const r=req.call(p); if(r&&r.catch)r.catch(()=>{});}catch(e){} }
+  else if(CUR&&CUR.yt){ window.open(CUR.yt,'_blank'); }
+}
 function open_(id){
-  const m = BY_ID[id]; if(!m) return;
+  const m = BY_ID[id]; if(!m) return; CUR=m;
   app.innerHTML = `<button class="back" onclick="home()">&#8592; Wapas list me</button>
   <h1>${esc(m.title)}</h1>
   <div class="fact">${esc([m.year,m.genre].filter(Boolean).join(' · '))||'Full movie'}</div>
-  <div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${m.id}?rel=0" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen title="${esc(m.title)}"></iframe></div>
+  <div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${m.id}?rel=0&fs=1&playsinline=1" allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen title="${esc(m.title)}"></iframe></div>
+  <button class="fsbtn" onclick="goFS()">&#x26F6; Full screen me dekho</button>
   <div class="hero"><img src="posters/${m.id}.jpg" alt="${esc(m.title)} poster"><div class="facts">
   <div><b>Channel:</b> ${esc(m.ch)} (official)</div>
   ${m.runtime?`<div><b>Lambai:</b> ${fmtDur(m.runtime)}</div>`:''}
